@@ -113,11 +113,22 @@ step order as unverified. Never interpret silence as expert approval."""
 
 class LocalChatExtractor:
     def __init__(self, url, model, api_key="local", timeout=60):
+        if not isinstance(url, str) or not url.strip():
+            raise ValueError("Set an explicit HTTP(S) OpenAI-compatible endpoint URL")
+        url = url.strip()
         parsed = urlparse(url)
-        if parsed.scheme not in {"http", "https"} or parsed.hostname not in {"localhost", "127.0.0.1", "::1"}:
-            raise ValueError("Only explicit loopback OpenAI-compatible endpoints are supported")
+        if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+            raise ValueError("Endpoint URL must use http:// or https:// and include a hostname")
         if parsed.username or parsed.password or parsed.query or parsed.fragment:
             raise ValueError("Invalid endpoint URL")
+        if any(c.isspace() for c in url) or "\\" in url:
+            raise ValueError("Invalid endpoint URL")
+        try:
+            port = parsed.port
+        except ValueError:
+            raise ValueError("Invalid endpoint port") from None
+        if port == 0:
+            raise ValueError("Invalid endpoint port")
         if not model:
             raise ValueError("Model is required")
         self.url, self.model, self.api_key, self.timeout = url.rstrip('/'), model, api_key, timeout

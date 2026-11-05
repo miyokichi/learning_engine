@@ -126,7 +126,7 @@ class Phase1Tests(EngineTest):
         self.assertEqual(self.e.evaluate("C", persist=False)["decision"], "REQUIRE_VALIDATION")
 
     def test_cli_independent_process_install_entrypoint_demo_replay(self):
-        env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
+        env = {**os.environ, "PYTHONIOENCODING": "utf-8", "LE_LLM_URL": "", "LE_LLM_MODEL": ""}
         def cli(*args, input=None):
             run = subprocess.run([sys.executable, "-m", "learning_engine", "--db", self.path, *args],
                                  input=input, capture_output=True, text=True, encoding="utf-8", env=env)
@@ -340,8 +340,7 @@ class Phase4Tests(EngineTest):
             response.read.return_value = b'{"choices":[{"message":{"content":"not json"}}]}'
             with self.assertRaises(ValueError):
                 extractor.extract(REPORT)
-        with self.assertRaises(ValueError):
-            LocalChatExtractor("https://external.example/v1", "model")
+        self.assertEqual(LocalChatExtractor("https://configured.example/v1", "model").url, "https://configured.example/v1")
 
 
 class Phase5Tests(EngineTest):

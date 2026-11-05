@@ -19,7 +19,7 @@ class InstalledCLITests(unittest.TestCase):
             def cli(*args, input=None, structured=True):
                 result = subprocess.run([str(executable), "--db", db, *args], cwd=directory,
                                         input=input, text=True, capture_output=True, encoding="utf-8",
-                                        env={**os.environ, "PYTHONIOENCODING": "utf-8"})
+                                        env={**os.environ, "PYTHONIOENCODING": "utf-8", "LE_LLM_URL": "", "LE_LLM_MODEL": ""})
                 self.assertEqual(result.returncode, 0, result.stderr)
                 return json.loads(result.stdout) if structured else result.stdout
             self.assertIn("interact", cli("--help", structured=False))

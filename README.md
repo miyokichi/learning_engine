@@ -145,7 +145,9 @@ learning-engine --db demo.sqlite3 consult --case DEMO-NEW --task correction --te
 learning-engine --env-file path/to/local.env --db demo.sqlite3 interact
 ```
 
-優先順位は **CLI引数 > 環境変数 > .env** です。`--llm-url` と `--model` でも指定できます。APIキーは任意の `LE_LLM_API_KEY`（未設定時は `local`）。`.env` はUTF-8で、空行・コメント・引用符・`export KEY=value`に対応します。変数展開やコード実行はしません。`.env` と `.env.*` はGit管理から除外し、`.env.example` だけを共有します。現在はloopback（localhost / 127.0.0.1 / ::1）のみ許可し、リダイレクトと環境プロキシを無効にしています。
+優先順位は **CLI引数 > 環境変数 > .env** です。`--llm-url` と `--model` でも指定できます。APIキーは任意の `LE_LLM_API_KEY`（未設定時は `local`）。`.env` はUTF-8で、空行・コメント・引用符・`export KEY=value`に対応します。変数展開やコード実行はしません。`.env` と `.env.*` はGit管理から除外し、`.env.example` だけを共有します。
+
+接続先は明示指定したHTTP(S) URLで、localhostだけでなくLAN内のIPアドレス・ホスト名も利用できます（例：`http://192.168.1.10:11434/v1`）。設定した接続先へ入力内容を送信するため、自分が利用するLLMサーバーを指定してください。別の接続先へのリダイレクトと環境プロキシは無効です。
 
 LLMは作業報告の構造化と相談への提案を生成し、Pythonが型・enum・質問件数を検査します。相談の原文・応答・固定コンテキストと、作業報告の抽出結果はDBに保存されます。ルール判定・履歴・承認・実行ゲートはLLMを使いません。オフラインでは `FakeExtractor(fixed_procedure, suggestions=fixed_suggestions)` を利用できます。実モデルによる出力品質は環境ごとの検証が必要です。
 
