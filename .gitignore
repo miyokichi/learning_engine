@@ -9,4 +9,16 @@ dist/
 .env
 .env.*
 !.env.example
-examples/
+# Share only the curated fictional examples; keep other local examples ignored.
+examples/*
+!examples/case_001.json
+!examples/case_015.json
+!examples/rule_root.json
+!examples/rule_exception.json
+!examples/procedure_manual.json
+!examples/concept_bottom_radius.json
+!examples/learning_cycle.py
+!examples/chat_sample.txt
+!examples/replay_sequence.json
+!examples/tutorial_output_ja.txt
+!examples/chat_sample_output_ja.txt

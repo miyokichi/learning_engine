@@ -1,0 +1,14 @@
+{
+  "goal": "Viaモデルの評価",
+  "trigger": "側壁形状に差がある場合",
+  "steps": [
+    {"action": "断面画像を確認", "reason": "形状同等性を比較するため", "result": "形状差を確認"},
+    {"action": "形状を考慮した計算", "reason": "従来の近似が疑わしいため", "result": "最終判断は保留"}
+  ],
+  "outcome": "追加検証まで保留",
+  "decision_criteria": ["形状同等性"],
+  "unverified_inferences": [],
+  "missing": ["validation"],
+  "required_order": "unknown",
+  "limitations": ["架空サンプルの一報告。一般化は未検証"]
+}

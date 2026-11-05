@@ -1,0 +1,284 @@
+{
+  "name": "fictional-sequential-learning-v1",
+  "events": [
+    {
+      "type": "case_revealed",
+      "event_time": "2025-01-01T00:00:00+00:00",
+      "available_at": "2026-01-01T00:00:00+00:00",
+      "payload": {
+        "case_id": "TRAIN-A",
+        "features": {
+          "material": {
+            "value": "A",
+            "status": "documented",
+            "source": "fixture:material"
+          },
+          "equivalent": {
+            "value": true,
+            "status": "expert_confirmed",
+            "source": "fixture:comparison"
+          },
+          "process": {
+            "value": "P1",
+            "status": "documented",
+            "source": "fixture:process"
+          },
+          "document": {
+            "value": "P1",
+            "status": "documented",
+            "source": "fixture:document"
+          }
+        },
+        "split": "train"
+      }
+    },
+    {
+      "type": "system_decision",
+      "event_time": "2025-01-01T00:00:00+00:00",
+      "available_at": "2026-01-01T00:00:01+00:00",
+      "payload": {
+        "case_id": "TRAIN-A"
+      }
+    },
+    {
+      "type": "expert_review_revealed",
+      "event_time": "2025-01-01T00:00:00+00:00",
+      "available_at": "2026-01-01T00:00:02+00:00",
+      "payload": {
+        "case_id": "TRAIN-A",
+        "decision": "REUSE_MODEL",
+        "needed_fields": []
+      }
+    },
+    {
+      "type": "rule_proposed",
+      "event_time": "2025-01-01T00:00:00+00:00",
+      "available_at": "2026-01-01T00:00:03+00:00",
+      "payload": {
+        "rule_id": "ROOT",
+        "conclusion": "REUSE_MODEL",
+        "predicates": [
+          {
+            "feature": "material",
+            "op": "eq",
+            "value": "A"
+          }
+        ],
+        "cornerstone_case_id": "TRAIN-A"
+      }
+    },
+    {
+      "type": "rule_published",
+      "event_time": "2025-01-01T00:00:00+00:00",
+      "available_at": "2026-01-01T00:00:04+00:00",
+      "payload": {
+        "rule_id": "ROOT",
+        "expert_confirmed": true,
+        "impacts_reviewed": true
+      }
+    },
+    {
+      "type": "case_revealed",
+      "event_time": "2025-01-01T00:00:00+00:00",
+      "available_at": "2026-01-01T00:00:05+00:00",
+      "payload": {
+        "case_id": "TRAIN-B",
+        "features": {
+          "material": {
+            "value": "A",
+            "status": "documented",
+            "source": "fixture:material"
+          },
+          "equivalent": {
+            "value": false,
+            "status": "expert_confirmed",
+            "source": "fixture:comparison"
+          },
+          "process": {
+            "value": "P2",
+            "status": "documented",
+            "source": "fixture:process"
+          },
+          "document": {
+            "value": "P2",
+            "status": "documented",
+            "source": "fixture:document"
+          }
+        },
+        "split": "train"
+      }
+    },
+    {
+      "type": "system_decision",
+      "event_time": "2025-01-01T00:00:00+00:00",
+      "available_at": "2026-01-01T00:00:06+00:00",
+      "payload": {
+        "case_id": "TRAIN-B"
+      }
+    },
+    {
+      "type": "expert_review_revealed",
+      "event_time": "2025-01-01T00:00:00+00:00",
+      "available_at": "2026-01-01T00:00:07+00:00",
+      "payload": {
+        "case_id": "TRAIN-B",
+        "decision": "REQUIRE_VALIDATION",
+        "needed_fields": []
+      }
+    },
+    {
+      "type": "correction_confirmed",
+      "event_time": "2025-01-01T00:00:00+00:00",
+      "available_at": "2026-01-01T00:00:08+00:00",
+      "payload": {
+        "case_id": "TRAIN-B",
+        "conclusion": "REQUIRE_VALIDATION",
+        "interpretation": "同等性が否定されたら再検証",
+        "cornerstone_case_id": "TRAIN-A",
+        "parent_rule_id": "ROOT",
+        "selected_features": [
+          "equivalent"
+        ],
+        "rule_id": "EXCEPTION"
+      }
+    },
+    {
+      "type": "rule_published",
+      "event_time": "2025-01-01T00:00:00+00:00",
+      "available_at": "2026-01-01T00:00:09+00:00",
+      "payload": {
+        "rule_id": "EXCEPTION",
+        "expert_confirmed": true,
+        "impacts_reviewed": true
+      }
+    },
+    {
+      "type": "system_decision",
+      "event_time": "2025-01-01T00:00:00+00:00",
+      "available_at": "2026-01-01T00:00:10+00:00",
+      "payload": {
+        "case_id": "TRAIN-B"
+      }
+    },
+    {
+      "type": "case_revealed",
+      "event_time": "2025-01-01T00:00:00+00:00",
+      "available_at": "2026-01-01T00:00:11+00:00",
+      "payload": {
+        "case_id": "TRAIN-D",
+        "features": {
+          "material": {
+            "value": "A",
+            "status": "documented",
+            "source": "fixture:material"
+          },
+          "equivalent": {
+            "value": null,
+            "status": "unknown",
+            "source": "fixture:comparison"
+          },
+          "process": {
+            "value": "P3",
+            "status": "documented",
+            "source": "fixture:process"
+          },
+          "document": {
+            "value": "P3",
+            "status": "documented",
+            "source": "fixture:document"
+          }
+        },
+        "split": "train"
+      }
+    },
+    {
+      "type": "system_decision",
+      "event_time": "2025-01-01T00:00:00+00:00",
+      "available_at": "2026-01-01T00:00:12+00:00",
+      "payload": {
+        "case_id": "TRAIN-D"
+      }
+    },
+    {
+      "type": "expert_answer_revealed",
+      "event_time": "2025-01-01T00:00:00+00:00",
+      "available_at": "2026-01-01T00:00:13+00:00",
+      "payload": {
+        "case_id": "TRAIN-D",
+        "field_id": "equivalent",
+        "raw_text": "教材の回答：同等ではないと確認",
+        "value": false,
+        "expert_confirmed": true
+      }
+    },
+    {
+      "type": "system_decision",
+      "event_time": "2025-01-01T00:00:00+00:00",
+      "available_at": "2026-01-01T00:00:14+00:00",
+      "payload": {
+        "case_id": "TRAIN-D"
+      }
+    },
+    {
+      "type": "expert_review_revealed",
+      "event_time": "2025-01-01T00:00:00+00:00",
+      "available_at": "2026-01-01T00:00:15+00:00",
+      "payload": {
+        "case_id": "TRAIN-D",
+        "decision": "REQUIRE_VALIDATION",
+        "needed_fields": [
+          "equivalent"
+        ]
+      }
+    },
+    {
+      "type": "case_revealed",
+      "event_time": "2025-01-01T00:00:00+00:00",
+      "available_at": "2026-01-01T00:00:16+00:00",
+      "payload": {
+        "case_id": "TEST-C",
+        "features": {
+          "material": {
+            "value": "A",
+            "status": "documented",
+            "source": "fixture:material"
+          },
+          "equivalent": {
+            "value": false,
+            "status": "expert_confirmed",
+            "source": "fixture:comparison"
+          },
+          "process": {
+            "value": "P1",
+            "status": "documented",
+            "source": "fixture:process"
+          },
+          "document": {
+            "value": "P1",
+            "status": "documented",
+            "source": "fixture:document"
+          }
+        },
+        "split": "test"
+      }
+    },
+    {
+      "type": "system_decision",
+      "event_time": "2025-01-01T00:00:00+00:00",
+      "available_at": "2026-01-01T00:00:17+00:00",
+      "payload": {
+        "case_id": "TEST-C"
+      }
+    },
+    {
+      "type": "expert_review_revealed",
+      "event_time": "2025-01-01T00:00:00+00:00",
+      "available_at": "2026-01-01T00:00:18+00:00",
+      "payload": {
+        "case_id": "TEST-C",
+        "decision": "REQUIRE_VALIDATION",
+        "needed_fields": []
+      }
+    }
+  ]
+}

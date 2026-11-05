@@ -1,0 +1,13 @@
+{
+  "text": "底部の丸まりも評価前に確認する必要がある",
+  "source": "fictional_expert_report",
+  "feature_id": "via.bottom_radius",
+  "definition": "断面画像におけるVia底部の曲率半径",
+  "aliases": ["bottom_rounding_radius"],
+  "measurement": "断面画像で底部輪郭に円を当てはめる。説明用の架空定義",
+  "unit": "nm",
+  "scope": {"via.material": "OXIDE_A"},
+  "relation_type": "distinct",
+  "related_features": ["via.geometry_equivalence"],
+  "important": true
+}

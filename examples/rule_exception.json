@@ -1,0 +1,10 @@
+{
+  "rule_id": "R-002",
+  "decision_type": "model_reuse",
+  "parent_id": "R-001",
+  "predicates": [{"feature": "via.geometry_equivalence", "op": "eq", "value": false}],
+  "conclusion": "REQUIRE_VALIDATION",
+  "cornerstone_case_id": "CASE-001",
+  "corrected_case_id": "CASE-015",
+  "explanation": "Demo: reuse is disallowed when geometry non-equivalence confirmed"
+}

@@ -1,0 +1,5 @@
+{
+  "via.sidewall_angle": {"value": 2, "unit": "degree", "status": "measured", "source": "DEMO_M1"},
+  "via.geometry_equivalence": {"value": true, "status": "expert_confirmed", "source": "DEMO_E1"},
+  "via.material": {"value": "OXIDE_A", "status": "documented", "source": "DEMO_DOC1"}
+}

@@ -33,16 +33,20 @@ def main(argv=None):
     sub = p.add_subparsers(dest="command", required=True)
     sub.add_parser("init")
     sub.add_parser("demo", help="架空の回答・承認を使ったオフラインE2Eデモ")
+    x = sub.add_parser("tutorial", help="初めての方向けの日本語学習体験（架空教材）"); x.add_argument("--auto", action="store_true", help="架空の回答と承認を自動再生")
+    x = sub.add_parser("chat", help="日本語で判断・質問・訂正・作業報告"); x.add_argument("--session"); x.add_argument("--sample", action="store_true", help="固定された架空会話サンプルを使用"); x.add_argument("--llm-url"); x.add_argument("--model")
     x = sub.add_parser("interact"); x.add_argument("--llm-url"); x.add_argument("--model")
     sub.add_parser("pending")
+    x = sub.add_parser("doctor", help="DBとLLM設定の診断。既定では接続しません"); x.add_argument("--check-llm", action="store_true", help="明示したLLMに架空の疎通リクエストを送る"); x.add_argument("--llm-url"); x.add_argument("--model")
     sub.add_parser("metrics")
+    x = sub.add_parser("replay-experiment", help="隔離DBで架空イベントを逐次再生"); x.add_argument("--scenario", help="時系列イベントのJSONファイル。省略時は架空教材"); x.add_argument("--strategy", choices=["learning_engine", "baseline_llm_plus_cases", "compare"], default="compare")
     x = sub.add_parser("consult"); x.add_argument("--case", required=True); x.add_argument("--text", required=True); x.add_argument("--task", choices=["case", "answer", "correction", "concept"], default="case"); x.add_argument("--llm-url"); x.add_argument("--model")
     x = sub.add_parser("withdraw-rule"); x.add_argument("--rule", required=True); x.add_argument("--expert-confirmed", action="store_true")
     x = sub.add_parser("propose-knowledge"); x.add_argument("--kind", required=True); x.add_argument("--body", required=True); x.add_argument("--case")
     x = sub.add_parser("adopt-knowledge"); x.add_argument("--id", required=True); x.add_argument("--expert-confirmed", action="store_true"); x.add_argument("--reject", action="store_true")
     x = sub.add_parser("concept-impacts"); x.add_argument("--id", required=True)
     x = sub.add_parser("procedures"); x.add_argument("--case", required=True)
-    x = sub.add_parser("compare-procedures"); x.add_argument("--id", action="append", required=True)
+    x = sub.add_parser("compare-procedures"); x.add_argument("--id", action="append", required=True); x.add_argument("--semantic", help="手動の意味的比較候補JSON"); x.add_argument("--use-llm", action="store_true"); x.add_argument("--llm-url"); x.add_argument("--model")
     x = sub.add_parser("validate-procedure"); x.add_argument("--id", required=True); x.add_argument("--scope", required=True); x.add_argument("--evidence", required=True); x.add_argument("--expert-confirmed", action="store_true")
     x = sub.add_parser("add-case"); x.add_argument("--id", required=True); x.add_argument("--features", required=True); x.add_argument("--occurred-at")
     x = sub.add_parser("review-case"); x.add_argument("--case", required=True); x.add_argument("--decision", required=True); x.add_argument("--status", default="expert_approved")
@@ -63,11 +67,21 @@ def main(argv=None):
     x = sub.add_parser("approve-procedure"); x.add_argument("--id", required=True); x.add_argument("--expert-approved", action="store_true")
     x = sub.add_parser("replay"); x.add_argument("--mode", choices=["current", "current_knowledge", "point_in_time"], default="current_knowledge")
     args = p.parse_args(argv)
-    with Engine(args.db) as e:
+    if args.command == "replay-experiment":
+        from .replay_experiment import run_experiment, compare_experiment
+        from .demo_experiment import sample_scenario
         try:
-            dispatch(args, e)
-        except (ValueError, KeyError, PermissionError, OSError, sqlite3.Error) as exc:
+            scenario = data_arg(args.scenario) if args.scenario else sample_scenario()
+            output = compare_experiment(scenario) if args.strategy == "compare" else run_experiment(scenario, args.strategy)
+            print(json.dumps(output, ensure_ascii=False, indent=2))
+        except (ValueError, KeyError, OSError, sqlite3.Error) as exc:
             p.error(str(exc))
+        return
+    try:
+        with Engine(args.db) as e:
+            dispatch(args, e)
+    except (ValueError, KeyError, PermissionError, OSError, sqlite3.Error) as exc:
+        p.error(str(exc))
 
 
 def dispatch(args, e):
@@ -76,12 +90,45 @@ def dispatch(args, e):
     elif args.command == "demo":
         from .demo import run_demo
         output = run_demo(e)
+    elif args.command == "tutorial":
+        from .tutorial import tutorial
+        tutorial(e, args.auto)
+        return
+    elif args.command == "chat":
+        from .conversation import chat
+        if args.sample:
+            from .demo_conversation import sample_model, SAMPLE_TEXTS
+            print("架空の固定会話サンプルです。一般的な自然言語解釈は行いません。回答・承認も練習用です。")
+            print("入力できる練習文：\n" + "\n".join(SAMPLE_TEXTS))
+            model = sample_model()
+        else:
+            model = extractor(args)
+        chat(e, model, args.session)
+        return
     elif args.command == "interact":
         from .interactive import interact
         interact(e, extractor(args))
         return
     elif args.command == "pending":
         output = e.pending()
+    elif args.command == "doctor":
+        model = extractor(args)
+        with e.store.transaction():
+            e.store.conn.execute("CREATE TEMP TABLE IF NOT EXISTS doctor_write_probe (value INTEGER)")
+            e.store.conn.execute("INSERT INTO doctor_write_probe VALUES(1)")
+            e.store.conn.execute("DROP TABLE doctor_write_probe")
+        output = {"db": args.db, "db_read_write": True, "integrity": e.store.one("PRAGMA quick_check")["quick_check"],
+                  "schema_migration": e.store.one("SELECT max(version) version FROM schema_migrations")["version"],
+                  "env_file": args.env_file or str(Path.cwd() / ".env"), "llm_configured": model is not None,
+                  "llm_connection": "not_requested", "api_key": "not_displayed"}
+        if args.check_llm:
+            if not model:
+                raise ValueError("LLM設定がありません。.envのURLとモデル名を確認してください")
+            try:
+                model._complete('Return only JSON: {"ok":true}', "接続確認用の架空メッセージです。実データは含みません。")
+                output["llm_connection"] = "ok"
+            except Exception as exc:
+                output["llm_connection"] = "failed:" + type(exc).__name__
     elif args.command == "metrics":
         output = e.metrics()
     elif args.command == "consult":
@@ -97,7 +144,7 @@ def dispatch(args, e):
     elif args.command == "procedures":
         output = e.procedures(args.case)
     elif args.command == "compare-procedures":
-        output = e.compare_procedures(args.id)
+        output = e.compare_procedures(args.id, extractor(args) if args.use_llm else None, data_arg(args.semantic) if args.semantic else None)
     elif args.command == "validate-procedure":
         output = e.validate_procedure_scope(args.id, data_arg(args.scope), args.evidence, args.expert_confirmed)
     elif args.command == "add-case":

@@ -64,7 +64,7 @@ def unknown_fields(features, predicates):
     return sorted({p["feature"] for p in predicates if evaluate_predicate(features, p) == Truth.UNKNOWN})
 
 
-def decide(features, rules, decision_type):
+def _decide(features, rules, decision_type):
     """MVP RDR tree: a matching child overrides its parent.
 
     UNKNOWN on any otherwise applicable root/exception blocks positive conclusions;
@@ -105,6 +105,16 @@ def decide(features, rules, decision_type):
         if not applicable:
             return {"decision": current["conclusion"], "rule_id": current["id"], "unknown_fields": [], "reason": "rule_matched"}
         current = applicable[0]
+
+
+def decide(features, rules, decision_type):
+    result = _decide(features, rules, decision_type)
+    by_id = {r["id"]: r for r in rules}
+    path, current = [], result["rule_id"]
+    while current and current not in path:
+        path.insert(0, current)
+        current = by_id[current]["parent_id"]
+    return {**result, "rule_path": path}
 
 
 def feature_differences(first, second):

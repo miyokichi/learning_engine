@@ -1,0 +1,8 @@
+{
+  "rule_id": "R-001",
+  "decision_type": "model_reuse",
+  "predicates": [{"feature": "via.material", "op": "eq", "value": "OXIDE_A"}],
+  "conclusion": "REUSE_MODEL",
+  "cornerstone_case_id": "CASE-001",
+  "explanation": "Demo: old general rule, to be refined with RDR"
+}

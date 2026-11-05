@@ -1,10 +1,48 @@
-# Learning Engine v0.2
+# Learning Engine v0.3
 
 人間との対話から判断基準・概念・作業手順を学ぶ、独立したPythonパッケージです。Python 3.11以上とSQLiteで動作し、実行時の追加依存はありません。外部ハーネス・常駐サーバー・Adapter・MCP連携は不要です。
 
 「対話 → 理解の確認 → 判断 → 訂正 → 例外ルール学習 → 未経験案件への適用」を、CLIとPython APIで試せます。すべてのサンプルは架空のVia/Metal事例です。モデルや手順の物理的妥当性を保証する製品ではありません。
 
-## インストールと実行
+## 初めての方へ：3つのコマンド
+
+リポジトリのルートで実行してください。仮想環境の有効化は不要です。
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -e .
+.\.venv\Scripts\learning-engine.exe --db tutorial.sqlite3 tutorial
+```
+
+画面を読み、進めるときだけ `確認` と入力します。架空の回答・承認を使った教材で、実データは不要です。
+
+普段は `.env` を設定し、`.\.venv\Scripts\learning-engine.exe --db my_learning.sqlite3 chat` で日本語を話してください。案件や作業報告から始められ、IDやJSONを書く必要はありません。LLMなしでは自然言語の自動解釈は無効です。`tutorial` または従来の `interact` のフォームで利用できます。
+
+- [日本語の使い方ガイド](docs/USER_GUIDE_ja.md)：cloneから起動、会話、訂正、再開まで。
+- [チュートリアル](docs/TUTORIAL_ja.md)：架空教材と、LLM不要の固定会話練習。
+- [用語と考え方](docs/CONCEPTS_ja.md)：Case、Unknown、承認、判断と実行の違い。
+- [困ったとき](docs/TROUBLESHOOTING_ja.md)：設定・起動・質問・SQLiteの診断。
+- [v0.3実装報告](IMPLEMENTATION_REPORT_v0_3.md)：互換性、検証結果、制約。
+
+`--db` と `--env-file` はサブコマンドより前に指定します。教材DBと自分の案件DBを分けると、架空データと混ざりません。
+
+## v0.3の新しい入口
+
+```powershell
+# 普通の日本語で依頼・回答・訂正・作業報告（.envのLLMを使用）
+.\.venv\Scripts\learning-engine.exe --db my_learning.sqlite3 chat
+# 前回の会話は通常起動時に番号で選択可能。chat --session に表示されたIDを指定しても再開できます
+# 接続せずにDB・設定を確認。--check-llm を加えた時だけ疎通します
+.\.venv\Scripts\learning-engine.exe --db my_learning.sqlite3 doctor
+# 本番DBを開かず、一時DBで順次学習と比較実験
+.\.venv\Scripts\learning-engine.exe replay-experiment
+```
+
+会話の `確認` は、画面に表示された一つの確認対象にだけ結び付きます。`OK` やLLM自身の「承認」は採用になりません。解釈確認とルール公開、手順候補の承認はそれぞれ別の確認です。原文・エラー・保留・候補を保存し、`/exit` で終了、`/status` で状態を確認できます。
+
+逐次リプレイは `case_revealed → system_decision → expert_answer_revealed / expert_review_revealed → correction_confirmed → rule_published` 等のイベントを `available_at` 順で適用します。`event_time` と利用可能時刻を分離し、未来の回答・正解を推論に渡しません。testの正解は採点だけに使い、学習DBに投入しません。`baseline_llm_plus_cases` は既定では固定の事例参照モデルで、実LLMの性能評価ではありません。fixtureは `examples/replay_sequence.json`、APIは `run_experiment` と `compare_experiment` です。
+
+## 従来コマンドとAPI
 
 プロジェクトのルートで実行してください。Windows PowerShellの例です。
 
@@ -166,7 +204,7 @@ LLMは作業報告の構造化と相談への提案を生成し、Pythonが型�
 
 初期Case属性と当時のDecisionスナップショットは保持し、属性更新・専門家レビュー・ルール公開/撤回を追記します。重要操作には監査イベント、ローカル操作主体、システム利用可能時刻が付きます。原文の追加回答・解釈確認・採用前後も保存します。
 
-`learning_engine/migrations.py` が起動時にv0.1 DBへ追加テーブルを作ります。元テーブルの削除はありません。既存監査からレビュー時刻を復元し、ルール公開イベントを取り込みます。監査がない古いレビューの利用可能時刻は推測せず、時点評価では未レビューにします。移行前にはアプリを終了しDBファイルをバックアップしてください。`PRAGMA user_version` は2です。
+`learning_engine/migrations.py` が起動時にv0.1/v0.2 DBへ追加テーブルを作ります。元テーブルの削除はありません。v0.3は会話・確認対象・質問候補・判断経路・証拠参照を追加します。既存監査からレビュー時刻を復元し、ルール公開イベントを取り込みます。監査がない古いレビューの利用可能時刻は推測せず、時点評価では未レビューにします。移行前にはアプリを終了しDBファイルをバックアップしてください。移行台帳 `schema_migrations` の最新は3です。既存ツールとの互換性のため `PRAGMA user_version` は2のまま維持しています。
 
 `learning_engine.Engine` と既存サブコマンドを維持しています。DB接続は `with Engine(...)` または `close()` で閉じてください。
 
@@ -182,6 +220,8 @@ LLMは作業報告の構造化と相談への提案を生成し、Pythonが型�
 | 5 | 概念提案・比較・採用/棄却、過去への影響候補、Unknown保持と再レビュー |
 | 6 | 2種類のリプレイ、Fake LLM・模擬HTTP、評価指標、ドキュメント |
 
-テストは単体・API E2E・入力フォーム・別プロセスCLI・再起動・旧DB移行を含みます。実モデルの性能評価、複雑な数式条件、意味的な手順統合、因果推論の証明、専門家の認証/合議、暗号化、多人数同時編集、外部ツール実行は未実装です。レビュー正解ラベルは既存互換のCase単位のため、複数の判断対象を厳密に扱う場合は別Caseに分けてください。
+上表は維持しているv0.2の基盤です。v0.3では自然言語chat、ガイド付きtutorial、理由付き質問候補、RDR参照整合性、逐次リプレイ、条件分岐と意味的な手順比較候補を追加しました。
+
+テストは単体・API E2E・入力フォーム・別プロセスCLI・再起動・旧DB移行を含みます。実モデルの性能評価、複雑な数式条件、意味的な手順統合の一般性検証、因果推論の証明、専門家の認証/合議、暗号化、多人数同時編集、外部ツール実行は未実装です。レビュー正解ラベルは既存互換のCase単位のため、複数の判断対象を厳密に扱う場合は別Caseに分けてください。chatで作るCaseには判断対象も記録し、明示的に別の対象のルール・正解を混ぜないようにしています。
 
 本実装は追跡可能な単体PoCです。今後は評価用の独立した正解データ、判断対象ごとのレビュー、概念の詳細な版移行、実モデルによる日本語抽出品質、専門家間の権限と合議を拡充する余地があります。

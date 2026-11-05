@@ -71,10 +71,14 @@ class Store:
         Path(self.path).parent.mkdir(parents=True, exist_ok=True)
         self.conn = sqlite3.connect(self.path)
         self.conn.row_factory = sqlite3.Row
-        self.conn.execute("PRAGMA foreign_keys=ON")
-        self.conn.executescript(SCHEMA)
-        from .migrations import migrate
-        migrate(self.conn)
+        try:
+            self.conn.execute("PRAGMA foreign_keys=ON")
+            self.conn.executescript(SCHEMA)
+            from .migrations import migrate
+            migrate(self.conn)
+        except Exception:
+            self.conn.close()
+            raise
 
     @contextmanager
     def transaction(self):

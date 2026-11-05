@@ -20,16 +20,14 @@ def validate_feature(entry):
 
 class KnowledgeMixin:
     def _state(self, object_id, case_id, state, body=None):
-        from .engine import now
         self.store.conn.execute("INSERT OR REPLACE INTO workflow VALUES(?,?,?,?,?)",
-                                (object_id, case_id, state, encode(body or {}), now()))
+                                (object_id, case_id, state, encode(body or {}), self.clock()))
 
     def pending(self):
         return self.store.many("SELECT * FROM workflow WHERE state NOT IN ('completed','published','rejected','EXECUTE') ORDER BY available_at,object_id")
 
     def register_feature(self, feature_id, definition, aliases=(), unit=None,
                          measurement=None, version=1, expert_confirmed=False):
-        from .engine import now
         if not expert_confirmed:
             raise PermissionError("Feature definition needs expert confirmation")
         if not isinstance(aliases, (list, tuple)):
@@ -46,8 +44,8 @@ class KnowledgeMixin:
         body = dict(definition=definition, aliases=list(aliases), unit=unit,
                     measurement=measurement, version=version)
         with self.store.transaction():
-            self.store.conn.execute("INSERT INTO feature_definitions VALUES(?,?,?)", (feature_id, encode(body), now()))
-            self.store.audit("feature_registered", feature_id, body, now())
+            self.store.conn.execute("INSERT INTO feature_definitions VALUES(?,?,?)", (feature_id, encode(body), self.clock()))
+            self.store.audit("feature_registered", feature_id, body, self.clock())
         return body
 
     def normalize_features(self, features):
@@ -73,7 +71,6 @@ class KnowledgeMixin:
         return result
 
     def propose_knowledge(self, kind, body, case_id=None):
-        from .engine import now, new_id
         if kind not in {"observation", "causal_hypothesis", "computational_dependency", "evidence", "concept", "suggestion"}:
             raise ValueError("Unsupported knowledge kind")
         if not isinstance(body, dict) or not isinstance(body.get("text"), str) or not body["text"].strip() or not isinstance(body.get("source"), str) or not body["source"].strip():
@@ -89,7 +86,7 @@ class KnowledgeMixin:
             raise ValueError("Unknown evidence claim")
         if case_id:
             self.case(case_id)
-        kid, stamp = new_id("K"), now()
+        kid, stamp = self.make_id("K"), self.clock()
         with self.store.transaction():
             self.store.conn.execute("INSERT INTO knowledge VALUES(?,?,?,?,?,?)", (kid, kind, case_id, encode(body), "draft", stamp))
             self.store.conn.execute("INSERT INTO knowledge_revisions(object_id,body,status,available_at) VALUES(?,?,?,?)",
@@ -100,7 +97,6 @@ class KnowledgeMixin:
         return {"id": kid, "status": "draft"}
 
     def adopt_knowledge(self, knowledge_id, expert_confirmed=False, reject=False):
-        from .engine import now
         if not expert_confirmed:
             raise PermissionError("Knowledge adoption needs explicit expert confirmation")
         row = self.store.one("SELECT * FROM knowledge WHERE id=?", (knowledge_id,))
@@ -118,7 +114,7 @@ class KnowledgeMixin:
                     raise ValueError(f"Concept needs {field}")
             if "scope" not in body or not isinstance(body["scope"], dict):
                 raise ValueError("Concept needs explicit scope ({} means all cases)")
-        status, stamp = "rejected" if reject else "verified", now()
+        status, stamp = "rejected" if reject else "verified", self.clock()
         with self.store.transaction():
             if row["kind"] == "concept" and not reject:
                 self.register_feature(body["feature_id"], body["definition"], body.get("aliases", []),
@@ -151,7 +147,7 @@ class KnowledgeMixin:
                 "note": "potential impact only; historical values remain unknown"}
 
     def procedures(self, case_id):
-        from .logic import all_predicates, Truth
+        from .logic import all_predicates, Truth, feature_differences
         features = self.case(case_id)["features"]
         result = []
         for row in self.store.many("SELECT * FROM procedure_candidates WHERE status IN ('approved_candidate','validated_for_scope') ORDER BY id"):
@@ -159,10 +155,12 @@ class KnowledgeMixin:
             scope = body.get("scope", {})
             if all_predicates(features, [{"feature": k, "op": "eq", "value": v} for k, v in scope.items()]) == Truth.TRUE:
                 result.append({"id": row["id"], "body": body, "status": row["status"], "executable": False,
+                               "source_case": row["case_id"], "provenance": body.get("provenance", []),
+                               "differences": feature_differences(self.case(row["case_id"])["features"], features),
                                "applicability": "scope_matched" if scope else "reference_only"})
         return result
 
-    def compare_procedures(self, procedure_ids):
+    def compare_procedures(self, procedure_ids, extractor=None, semantic_candidates=None):
         if len(set(procedure_ids)) < 2:
             raise ValueError("Compare at least two different reports")
         bodies = []
@@ -172,12 +170,42 @@ class KnowledgeMixin:
                 raise KeyError(pid)
             bodies.append(decode(row["body"]))
         actions = [{s["action"] for s in b["steps"]} for b in bodies]
-        return {"status": "draft", "sources": procedure_ids, "common_steps": sorted(set.intersection(*actions)),
+        result = {"status": "draft", "sources": procedure_ids, "common_steps": sorted(set.intersection(*actions)),
                 "branch_candidates": [{"trigger": b.get("trigger"), "steps": sorted(a - set.intersection(*actions))} for a, b in zip(actions, bodies)],
                 "required_order": "unknown", "executable": False}
+        from .llm import validate_comparison
+        semantic = semantic_candidates
+        error = None
+        if extractor:
+            try:
+                semantic = validate_comparison(extractor.compare_reports(dict(zip(procedure_ids, bodies))))
+            except Exception as exc:
+                error = type(exc).__name__ + ": comparison failed; original reports retained"
+                semantic = None
+        semantic = validate_comparison(semantic) if semantic is not None else {"action_synonyms": [], "goal_matches": [], "condition_differences": []}
+        all_actions = set.union(*actions)
+        for candidate in semantic["action_synonyms"]:
+            if not set(candidate["actions"]) <= all_actions:
+                raise ValueError("比較候補に元の報告にない作業が含まれています")
+        for group in semantic.values():
+            for candidate in group:
+                if not set(candidate["sources"]) <= set(procedure_ids):
+                    raise ValueError("比較候補が未知の報告を参照しています")
+                candidate["status"] = "unverified"
+        branches = [{**branch, "source": pid, "status": "unverified"} for pid, body in zip(procedure_ids, bodies) for branch in body.get("branches", [])]
+        followups = []
+        if not branches or any(not branch.get("condition") for branch in branches):
+            followups.append("どの条件でその計算や確認を選びましたか？")
+        if not all(b.get("stop_conditions") for b in bodies):
+            followups.append("どんな結果なら作業を省略または終了できますか？")
+        result.update(semantic_candidates=semantic, conditioned_branches=branches, followups=followups[:2],
+                      goal_comparison=[{"source": pid, "goal": b.get("goal"), "trigger": b.get("trigger"), "scope": b.get("scope", {}), "outcome": b.get("outcome")} for pid, b in zip(procedure_ids, bodies)], error=error)
+        first = self.store.one("SELECT case_id FROM procedure_candidates WHERE id=?", (procedure_ids[0],))
+        proposal = self.propose_knowledge("suggestion", {"text": "複数の作業報告の比較候補", "source": "procedure_comparison", "comparison": result}, first["case_id"])
+        result["comparison_id"] = proposal["id"]
+        return result
 
     def validate_procedure_scope(self, procedure_id, scope, evidence, expert_confirmed=False):
-        from .engine import now
         if not expert_confirmed or not evidence or not isinstance(scope, dict) or not scope:
             raise PermissionError("Explicit scope, validation evidence and expert approval required")
         row = self.store.one("SELECT * FROM procedure_candidates WHERE id=?", (procedure_id,))
@@ -187,5 +215,5 @@ class KnowledgeMixin:
         body.update(scope=scope, validation_evidence=evidence)
         with self.store.transaction():
             self.store.conn.execute("UPDATE procedure_candidates SET body=?,status='validated_for_scope' WHERE id=?", (encode(body), procedure_id))
-            self.store.audit("procedure_scope_validated", procedure_id, body, now())
+            self.store.audit("procedure_scope_validated", procedure_id, body, self.clock())
         return {"status": "validated_for_scope", "executable": False}

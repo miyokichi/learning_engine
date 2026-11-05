@@ -27,7 +27,9 @@ def timestamp(value):
 
 
 class Engine(KnowledgeMixin):
-    def __init__(self, db="learning.sqlite3"):
+    def __init__(self, db="learning.sqlite3", *, clock=None, id_factory=None):
+        self.clock = clock or now
+        self.make_id = id_factory or new_id
         self.store = Store(db)
 
     def close(self):
@@ -72,7 +74,7 @@ class Engine(KnowledgeMixin):
                 raise ValueError(f"Feature {name} needs an explicit status")
             if entry["status"] in ("measured", "documented", "expert_confirmed", "derived_verified") and entry.get("value") is None:
                 raise ValueError(f"Feature {name} is verified but value is absent")
-        stamp = now()
+        stamp = self.clock()
         occurred_at = timestamp(occurred_at) if occurred_at else stamp
         for entry in features.values():
             entry.setdefault("source", "user_input")
@@ -82,6 +84,8 @@ class Engine(KnowledgeMixin):
             self.store.conn.execute("INSERT INTO cases(id, occurred_at, features, feature_schema_version, created_at) VALUES(?,?,?,?,?)",
                                     (case_id, occurred_at or stamp, encode(features), feature_schema_version, stamp))
             self.store.audit("case_created", case_id, {"features": features}, stamp)
+            for field, entry in features.items():
+                self._evidence_ref(case_id, field, entry, stamp)
             self.store.conn.execute("INSERT INTO case_metadata VALUES(?,?)", (case_id, encode(metadata or {})))
             self._state(case_id, case_id, "registered")
         return self.case(case_id)
@@ -93,8 +97,8 @@ class Engine(KnowledgeMixin):
         with self.store.transaction():
             self.store.conn.execute("UPDATE cases SET review_status=?,expert_decision=? WHERE id=?",
                                     (status, decision, case_id))
-            self.store.audit("case_reviewed", case_id, {"status": status, "decision": decision}, now())
-            self.store.conn.execute("INSERT INTO review_history(case_id,decision,status,available_at) VALUES(?,?,?,?)", (case_id, decision, status, now()))
+            self.store.audit("case_reviewed", case_id, {"status": status, "decision": decision}, self.clock())
+            self.store.conn.execute("INSERT INTO review_history(case_id,decision,status,available_at) VALUES(?,?,?,?)", (case_id, decision, status, self.clock()))
             if status == "expert_approved":
                 from .logic import ACCEPTED_STATUSES
                 features = self.case(case_id)["features"]
@@ -143,16 +147,18 @@ class Engine(KnowledgeMixin):
             result.update(gate="EXPLORE", reason="safe_local_exploration_only")
         result["rule_version"] = [r["id"] for r in rules if r["status"] == "published" and r["decision_type"] == decision_type]
         result["evidence"] = {k: v.get("source") for k, v in current["features"].items()}
-        result["reference_cases"] = self.retrieve_cases(case_id, as_of=as_of)
+        result["evidence_refs"] = self.store.many("SELECT * FROM evidence_refs WHERE case_id=? AND available_at<=? ORDER BY available_at,id", (case_id, as_of or self.clock()))
+        result["reference_cases"] = self.retrieve_cases(case_id, as_of=as_of, decision_type=decision_type)
         result["external_execution_allowed"] = False
         if persist:
-            stamp = now()
-            d_id = new_id("DEC")
+            stamp = self.clock()
+            d_id = self.make_id("DEC")
             with self.store.transaction():
                 self.store.conn.execute("INSERT INTO decisions VALUES(?,?,?,?,?,?,?,?)", (
                     d_id, case_id, decision_type, result["decision"], result["rule_id"],
                     "provisional", encode(current["features"]), stamp))
                 self.store.audit("decision_proposed", d_id, result, stamp)
+                self.store.conn.execute("INSERT INTO decision_details VALUES(?,?)", (d_id, encode(result)))
                 self._state(case_id, case_id, result["gate"], result)
             result["decision_id"] = d_id
             if result["decision"] == "ASK":
@@ -160,6 +166,11 @@ class Engine(KnowledgeMixin):
                     self.ask(case_id, decision_type, feature)
             result["questions"] = self.store.many("SELECT * FROM questions WHERE case_id=? AND status IN ('open','answered_unverified') ORDER BY created_at,id LIMIT 2", (case_id,))
         return result
+
+    def _evidence_ref(self, case_id, field, entry, stamp):
+        self.store.conn.execute("INSERT INTO evidence_refs VALUES(?,?,?,?,?,?,?)", (
+            self.make_id("EV"), case_id, field, str(entry.get("source") or "unspecified"), entry["status"],
+            encode({"feature": entry, "verification": "reported_status_only", "authenticity_verified": False}), stamp))
 
     def _concept_requirements(self, current, as_of):
         """New important concepts are explicit review obligations, not inferred values."""
@@ -183,18 +194,21 @@ class Engine(KnowledgeMixin):
                 missing.add(field)
             else:
                 review = self.store.one("SELECT * FROM review_history WHERE case_id=? AND available_at>=? AND available_at<=? ORDER BY available_at DESC,id DESC LIMIT 1",
-                                        (current["id"], row["timestamp"], as_of or now()))
+                                        (current["id"], row["timestamp"], as_of or self.clock()))
                 if not review or review["status"] != "expert_approved":
                     needs_review = True
         return missing, needs_review
 
     def ask(self, case_id, target_decision, field_id):
-        self.case(case_id)
+        case = self.case(case_id)
         existing = self.store.one("SELECT * FROM questions WHERE case_id=? AND field_id=? AND target_decision=? AND status IN ('open','answered_unverified')",
                                   (case_id, field_id, target_decision))
         if existing:
             return existing["id"]
-        q_id, stamp = new_id("Q"), now()
+        previous = self.store.one("SELECT * FROM questions WHERE case_id=? AND field_id=? AND target_decision=? ORDER BY created_at DESC LIMIT 1", (case_id, field_id, target_decision))
+        if previous and previous["status"] == "confirmed" and case["features"].get(field_id, {}).get("status") in {"unknown", "conflicting"}:
+            return previous["id"]
+        q_id, stamp = self.make_id("Q"), self.clock()
         question = f"{field_id} は今回どのように確認しましたか？判断根拠と適用範囲も教えてください。回答の確定で {target_decision} の適用可否を再評価します。"
         with self.store.transaction():
             self.store.conn.execute("INSERT INTO questions VALUES(?,?,?,?,?,?,?,?)",
@@ -212,7 +226,7 @@ class Engine(KnowledgeMixin):
         with self.store.transaction():
             self.store.conn.execute("UPDATE questions SET answer=?, status='answered_unverified' WHERE id=?",
                                     (free_text, question_id))
-            self.store.audit("question_answered", question_id, {"text": free_text, "feature": q["field_id"]}, now())
+            self.store.audit("question_answered", question_id, {"text": free_text, "feature": q["field_id"]}, self.clock())
             self._state(question_id, q["case_id"], "answer_confirmation")
         # Do NOT silently update case features from free text.
         return {"status": "answered_unverified", "next": "confirm_and_version_case_feature"}
@@ -239,11 +253,12 @@ class Engine(KnowledgeMixin):
             f["value"] = None
         validate_feature(f)
         f = self.normalize_features({q["field_id"]: f})[q["field_id"]]
-        uid, stamp = new_id("FEATURE"), now()
+        uid, stamp = self.make_id("FEATURE"), self.clock()
         f.update(recorded_at=stamp, observed_at=stamp)
         with self.store.transaction():
             self.store.conn.execute("INSERT INTO case_feature_updates VALUES(?,?,?,?,?,?)",
                                     (uid, q["case_id"], q["field_id"], encode(f), question_id, stamp))
+            self._evidence_ref(q["case_id"], q["field_id"], f, stamp)
             self.store.conn.execute("UPDATE questions SET status='confirmed' WHERE id=?", (question_id,))
             self.store.conn.execute("UPDATE decisions SET status='stale' WHERE case_id=?", (q["case_id"],))
             self.store.audit("case_feature_confirmed", uid, {"question": question_id, "feature": q["field_id"], "entry": f}, stamp)
@@ -257,7 +272,7 @@ class Engine(KnowledgeMixin):
             raise KeyError(feedback_id)
         return self.retrieve_cases(f["case_id"], limit=limit)
 
-    def retrieve_cases(self, case_id, limit=3, as_of=None):
+    def retrieve_cases(self, case_id, limit=3, as_of=None, decision_type=None):
         """Rank approved comparisons separately from deterministic applicability."""
         current = self.case(case_id, as_of=as_of)
         rows = self.store.many("SELECT id FROM cases WHERE occurred_at<=? AND id<>? ORDER BY occurred_at DESC,id",
@@ -265,6 +280,8 @@ class Engine(KnowledgeMixin):
         candidates = []
         for row in rows:
             older = self.case(row["id"], as_of=as_of)
+            if decision_type and older["metadata"].get("decision_type") not in {None, decision_type}:
+                continue
             if older["review_status"] != "expert_approved":
                 continue
             shared = set(current["features"]) & set(older["features"])
@@ -279,7 +296,7 @@ class Engine(KnowledgeMixin):
         self.case(case_id)
         if decision_id and not self.store.one("SELECT id FROM decisions WHERE id=? AND case_id=?", (decision_id, case_id)):
             raise ValueError("decision_id does not belong to case")
-        fid, stamp = new_id("FB"), now()
+        fid, stamp = self.make_id("FB"), self.clock()
         with self.store.transaction():
             self.store.conn.execute("INSERT INTO feedback VALUES(?,?,?,?,?,?,?,?)",
                                     (fid, case_id, decision_id, text, corrected_to, None, 0, stamp))
@@ -298,7 +315,7 @@ class Engine(KnowledgeMixin):
                 raise ValueError("Confirmed correction is immutable; create another correction")
             self.store.conn.execute("UPDATE feedback SET interpretation=?, confirmed=1 WHERE id=?",
                                     (interpretation, feedback_id))
-            self.store.audit("correction_interpretation_confirmed", feedback_id, {"interpretation": interpretation}, now())
+            self.store.audit("correction_interpretation_confirmed", feedback_id, {"interpretation": interpretation}, self.clock())
             self._state(feedback_id, old["case_id"], "rule_draft_pending")
 
     def draft_exception_from_feedback(self, feedback_id, cornerstone_case_id, selected_features,
@@ -337,11 +354,35 @@ class Engine(KnowledgeMixin):
         parent = self.store.one("SELECT * FROM rules WHERE id=?", (parent_rule_id,))
         if not parent or parent["status"] != "published":
             raise ValueError("Parent rule must be published")
-        result = self.add_rule(rule_id or new_id("R"), f["corrected_to"], predicates,
+        self.validate_contrast(parent_rule_id, cornerstone_case_id, f["case_id"], feedback_id)
+        result = self.add_rule(rule_id or self.make_id("R"), f["corrected_to"], predicates,
                                decision_type=parent["decision_type"], parent_id=parent_rule_id,
                                cornerstone_case_id=cornerstone_case_id,
                                corrected_case_id=f["case_id"], explanation=f["interpretation"], feedback_id=feedback_id)
         return {**result, "draft_predicates": predicates, "human_confirmation_required": True}
+
+    def validate_contrast(self, parent_id, cornerstone_case_id, corrected_case_id, feedback_id=None):
+        parent = self.store.one("SELECT * FROM rules WHERE id=?", (parent_id,))
+        if not parent or parent["status"] != "published":
+            raise ValueError("Parent rule must be published")
+        if cornerstone_case_id == corrected_case_id:
+            raise ValueError("Contrasting cases must be different")
+        for case_id in (cornerstone_case_id, corrected_case_id):
+            case = self.case(case_id)
+            if case["metadata"].get("decision_type") not in {None, parent["decision_type"]}:
+                raise ValueError("Case judgment subject does not match parent decision type")
+            result = decide(case["features"], self.rules(), parent["decision_type"])
+            if case_id == corrected_case_id and feedback_id:
+                feedback = self.store.one("SELECT * FROM feedback WHERE id=?", (feedback_id,))
+                if feedback and feedback["decision_id"]:
+                    decision = self.store.one("SELECT * FROM decisions WHERE id=?", (feedback["decision_id"],))
+                    if not decision or decision["case_id"] != case_id or decision["decision_type"] != parent["decision_type"]:
+                        raise ValueError("Correction decision type/case does not match the parent")
+                    details = self.store.one("SELECT body FROM decision_details WHERE decision_id=?", (decision["id"],))
+                    result = decode(details["body"]) if details else decide(decode(decision["snapshot"]), self.rules(until=decision["created_at"]), decision["decision_type"])
+            if parent_id not in result.get("rule_path", []):
+                raise ValueError(f"Case {case_id} does not belong to the parent rule judgment path")
+        return True
 
     def add_rule(self, rule_id, conclusion, predicates, decision_type="model_reuse",
                  parent_id=None, cornerstone_case_id=None, corrected_case_id=None,
@@ -370,6 +411,8 @@ class Engine(KnowledgeMixin):
                 raise ValueError("No parent with same decision type")
         if not (cornerstone_case_id and corrected_case_id) and parent_id:
             raise ValueError("Exception requires both contrasting cases")
+        if parent_id:
+            self.validate_contrast(parent_id, cornerstone_case_id, corrected_case_id, feedback_id)
         if cornerstone_case_id:
             self.case(cornerstone_case_id)
         if corrected_case_id:
@@ -378,7 +421,7 @@ class Engine(KnowledgeMixin):
             f = self.store.one("SELECT * FROM feedback WHERE id=?", (feedback_id,))
             if not f or not f["confirmed"] or f["case_id"] != corrected_case_id:
                 raise ValueError("Expert must confirm correction interpretation before rule proposal")
-        stamp = now()
+        stamp = self.clock()
         with self.store.transaction():
             self.store.conn.execute("INSERT INTO rules VALUES(?,?,?,?,?,?,?,?,?,?,?,?)", (
                 rule_id, parent_id, decision_type, encode(predicates), conclusion,
@@ -405,7 +448,10 @@ class Engine(KnowledgeMixin):
         candidate_rules = [modified if r["id"] == rule_id else r for r in candidate_rules]
         rows = []
         for c in self.store.many("SELECT * FROM cases ORDER BY occurred_at, id"):
-            features = self.case(c["id"])["features"]
+            case = self.case(c["id"])
+            if case["metadata"].get("decision_type") not in {None, target["decision_type"]}:
+                continue
+            features = case["features"]
             old = decide(features, original_rules, target["decision_type"])
             new = decide(features, candidate_rules, target["decision_type"])
             if old["decision"] != new["decision"] or old["rule_id"] != new["rule_id"] or c["review_status"] == "expert_approved":
@@ -431,6 +477,7 @@ class Engine(KnowledgeMixin):
             parent = self.store.one("SELECT * FROM rules WHERE id=?", (r["parent_id"],))
             if parent["status"] != "published":
                 raise ValueError("Parent must be published")
+            self.validate_contrast(r["parent_id"], r["cornerstone_case_id"], r["corrected_case_id"], r["feedback_id"])
         preview = self.rule_preview(rule_id)
         if preview["reviewed_mismatches"]:
             raise ValueError(f"Proposed rule contradicts expert-reviewed cases: {preview['reviewed_mismatches']}")
@@ -441,7 +488,7 @@ class Engine(KnowledgeMixin):
             after = next((c["after"] for c in preview["affected_cases"] if c["case_id"] == r["corrected_case_id"]), None)
             if after != self.case(r["corrected_case_id"])["expert_decision"]:
                 raise ValueError("Proposed rule does not match corrected case expert decision")
-        stamp = now()
+        stamp = self.clock()
         with self.store.transaction():
             self.store.conn.execute("UPDATE rules SET status='published',published_at=? WHERE id=?", (stamp, rule_id))
             self.store.audit("rule_published", rule_id, preview, stamp)
@@ -462,7 +509,7 @@ class Engine(KnowledgeMixin):
             raise ValueError("No active rule")
         if self.store.one("SELECT id FROM rules WHERE parent_id=? AND status IN ('published','draft')", (rule_id,)):
             raise ValueError("Withdraw descendants first")
-        stamp = now()
+        stamp = self.clock()
         with self.store.transaction():
             self.store.conn.execute("UPDATE rules SET status='withdrawn' WHERE id=?", (rule_id,))
             self.store.conn.execute("INSERT INTO rule_events(rule_id,status,available_at) VALUES(?,?,?)", (rule_id, "withdrawn", stamp))
@@ -540,7 +587,7 @@ class Engine(KnowledgeMixin):
             raise ValueError("Natural-language narrative must not be blank")
         interpretation, error = self._extract_narrative(extractor, narrative)
         followups = self._debrief_followups(interpretation)
-        did, stamp = new_id("D"), now()
+        did, stamp = self.make_id("D"), self.clock()
         with self.store.transaction():
             self.store.conn.execute("INSERT INTO debriefs VALUES(?,?,?,?,?,?,?,?)", (
                 did, case_id, narrative, encode(interpretation) if interpretation else None,
@@ -590,7 +637,7 @@ class Engine(KnowledgeMixin):
             self.store.conn.execute("UPDATE debriefs SET report_text=?, interpretation=?, interpretation_status=?, followups=? WHERE id=?",
                                     (narrative, encode(interpretation) if interpretation else None,
                                      "draft" if interpretation else "needs_extraction", encode(followups), debrief_id))
-            self.store.audit("narrative_extended", debrief_id, {"before": d, "text": free_text, "error": error}, now())
+            self.store.audit("narrative_extended", debrief_id, {"before": d, "text": free_text, "error": error}, self.clock())
         return {"id": debrief_id, "interpretation": interpretation, "followups": followups, "error": error}
 
     def confirm_debrief(self, debrief_id, edited=None):
@@ -601,7 +648,8 @@ class Engine(KnowledgeMixin):
             raise ValueError("Debrief requires an LLM draft, not already confirmed")
         interpreted = edited if edited is not None else decode(d["interpretation"])
         interpreted = validate_procedure(interpreted)
-        pid, stamp = new_id("PROC"), now()
+        interpreted["provenance"] = list(dict.fromkeys([*interpreted["provenance"], f"debrief:{debrief_id}"]))
+        pid, stamp = self.make_id("PROC"), self.clock()
         with self.store.transaction():
             self.store.conn.execute("UPDATE debriefs SET interpretation_status='confirmed',interpretation=? WHERE id=?",
                                     (encode(interpreted), debrief_id))
@@ -620,7 +668,7 @@ class Engine(KnowledgeMixin):
             raise KeyError(procedure_id)
         if p["status"] not in {"confirmed_unvalidated", "interpretation_confirmed"}:
             raise ValueError("Procedure requires confirmed interpretation first")
-        stamp = now()
+        stamp = self.clock()
         with self.store.transaction():
             self.store.conn.execute("UPDATE procedure_candidates SET status='approved_candidate',approved_at=? WHERE id=?", (stamp, procedure_id))
             self.store.audit("procedure_candidate_approved", procedure_id, {"note": "Not an executable autonomous workflow"}, stamp)
