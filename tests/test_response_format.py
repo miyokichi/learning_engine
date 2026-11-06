@@ -23,20 +23,20 @@ class ResponseFormatTests(unittest.TestCase):
             {"choices": [{"message": {"content": content}}]}).encode()
         return opener
 
-    def test_default_and_opt_out_requests_parse_the_same_procedure(self):
-        for mode in ("json_object", "none"):
+    def test_default_omits_format_and_explicit_modes_parse_the_same_procedure(self):
+        for mode in (None, "json_object", "none"):
             with self.subTest(mode=mode):
-                client = LocalChatExtractor("http://llm.internal/v1", "model", response_format=mode)
+                client = LocalChatExtractor("http://llm.internal/v1", "model", **({"response_format": mode} if mode else {}))
                 opener = self.opener(json.dumps(PROCEDURE))
                 with patch("urllib.request.build_opener", return_value=opener):
                     self.assertEqual(client.extract("作業報告")["goal"], PROCEDURE["goal"])
                 payload = json.loads(opener.open.call_args.args[0].data)
-                if mode == "none":
+                if mode in (None, "none"):
                     self.assertNotIn("response_format", payload)
                 else:
                     self.assertEqual(payload["response_format"], {"type": "json_object"})
                 self.assertNotIn("temperature", payload)
-        self.assertEqual(LocalChatExtractor("http://llm.internal/v1", "model").response_format, "json_object")
+        self.assertEqual(LocalChatExtractor("http://llm.internal/v1", "model").response_format, "none")
 
     def test_vision_opt_out_retains_image_payload(self):
         png = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=")
@@ -73,6 +73,9 @@ class ResponseFormatTests(unittest.TestCase):
             args.response_format = None
             with patch.dict(os.environ, {"LE_LLM_RESPONSE_FORMAT": "invalid"}, clear=True), self.assertRaisesRegex(ValueError, "LE_LLM_RESPONSE_FORMAT"):
                 extractor(args)
+            path.write_text("LE_LLM_URL=http://llm.internal/v1\nLE_LLM_MODEL=model\n", encoding="utf-8")
+            with patch.dict(os.environ, {}, clear=True):
+                self.assertEqual(extractor(args).response_format, "none")
 
     def test_all_llm_commands_accept_cli_override(self):
         for command, options in (("chat", []), ("interact", []), ("doctor", []),
@@ -104,7 +107,7 @@ class ResponseFormatTests(unittest.TestCase):
                 with tempfile.TemporaryDirectory() as directory:
                     root = Path(directory)
                     config = root / "local.env"
-                    config.write_text(f"LE_LLM_URL=http://127.0.0.1:{server.server_port}/v1\nLE_LLM_MODEL=model\nLE_LLM_RESPONSE_FORMAT=none\n", encoding="utf-8")
+                    config.write_text(f"LE_LLM_URL=http://127.0.0.1:{server.server_port}/v1\nLE_LLM_MODEL=model\n", encoding="utf-8")
                     env = {k: v for k, v in os.environ.items() if not k.startswith("LE_LLM_")}
                     env["PYTHONPATH"] = str(Path(__file__).resolve().parents[1])
                     for override, cli, expected in (({}, [], "ok"), ({"LE_LLM_RESPONSE_FORMAT": "json_object"}, [], "failed:HTTPError"),

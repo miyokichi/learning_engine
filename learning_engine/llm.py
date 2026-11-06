@@ -165,7 +165,7 @@ unknown. An order in the report does not prove a required step order. Report any
 step order as unverified. Never interpret silence as expert approval."""
 
 class LocalChatExtractor:
-    def __init__(self, url, model, api_key="local", timeout=60, response_format="json_object"):
+    def __init__(self, url, model, api_key="local", timeout=60, response_format="none"):
         if not isinstance(url, str) or not url.strip():
             raise ValueError("Set an explicit HTTP(S) OpenAI-compatible endpoint URL")
         url = url.strip()

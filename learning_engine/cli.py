@@ -23,7 +23,7 @@ def extractor(args):
     model = args.model or config.get("LE_LLM_MODEL")
     if bool(url) != bool(model):
         raise ValueError("Set both LE_LLM_URL and LE_LLM_MODEL")
-    response_format = (getattr(args, "response_format", None) or config.get("LE_LLM_RESPONSE_FORMAT") or "json_object").strip().lower()
+    response_format = (getattr(args, "response_format", None) or config.get("LE_LLM_RESPONSE_FORMAT") or "none").strip().lower()
     return LocalChatExtractor(url, model, config.get("LE_LLM_API_KEY") or "local", response_format=response_format) if url else None
 
 
@@ -69,7 +69,7 @@ def main(argv=None):
     x = sub.add_parser("replay"); x.add_argument("--mode", choices=["current", "current_knowledge", "point_in_time"], default="current_knowledge")
     for command in ("chat", "interact", "doctor", "consult", "compare-procedures", "debrief", "extend-debrief"):
         sub.choices[command].add_argument("--response-format", choices=["json_object", "none"],
-            help="LLMのJSON形式指定。noneはresponse_formatを送信しません（既定: json_object）")
+            help="LLMのJSON形式指定。noneはresponse_formatを送信しません（既定: none）")
     args = p.parse_args(argv)
     if args.command == "replay-experiment":
         from .replay_experiment import run_experiment, compare_experiment

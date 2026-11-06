@@ -46,7 +46,7 @@ Remove-Item Env:LE_LLM_MODEL -ErrorAction SilentlyContinue
 
 `failed:HTTPError` はURL・認証・モデル指定等、`failed:URLError` や `TimeoutError` は接続先・サーバー・通信等の確認が必要です。APIはOpenAI互換のchat/completionsとJSON応答に対応している必要があります。接続先を設定しても、モデルの出力品質を保証するものではありません。
 
-`response_format` 非対応のサーバーでは、`.env` に `LE_LLM_RESPONSE_FORMAT=none` を追加してください。`response_format: null` ではなく、項目そのものを省略します。一時的には `doctor --check-llm --response-format none`、`chat --response-format none` でも指定できます。対応サーバーには `json_object`（既定）を使えます。指定を省略した場合も、モデルにはJSON応答を求め、返答の検証を続けます。
+`response_format` は既定では送信しません。非対応のサーバーでエラーになる場合は、既存の `.env` や環境変数にある `LE_LLM_RESPONSE_FORMAT=json_object` を削除するか `none` に変更してください。`response_format: null` ではなく、項目そのものを省略します。一時的には `doctor --check-llm --response-format none`、`chat --response-format none` でも指定できます。対応サーバーへ明示的に送信する場合は `json_object` を使えます。指定を省略した場合も、モデルにはJSON応答を求め、返答の検証を続けます。
 
 以前の `Only explicit loopback ...` エラーはlocalhost限定検査によるもので、現在はLANの明示URLにも対応しています。依然表示されるならインストール先を確認し、上のvenvで再インストールしてください。別ホストへのリダイレクトは許可しません。
 
