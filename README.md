@@ -189,6 +189,8 @@ learning-engine --env-file path/to/local.env --db demo.sqlite3 interact
 
 temperatureパラメータは送信しません。サーバー・モデルの既定値を使用します。画像を利用する場合は画像入力対応モデルとOpenAI互換の `image_url` 入力に対応したサーバーを指定してください。
 
+`response_format` が使えない社内LLMなどでは、`.env` に `LE_LLM_RESPONSE_FORMAT=none` を追加すると、この項目をリクエストから完全に省略します。既定の `json_object` は `response_format: {"type": "json_object"}` を送信します。`chat --response-format none` のようにCLIでも切り替えられ、優先順位はCLI > 環境変数 > .envです。どちらもプロンプトでJSON応答を依頼し、受信したJSONと型の検証を行います。
+
 接続先は明示指定したHTTP(S) URLで、localhostだけでなくLAN内のIPアドレス・ホスト名も利用できます（例：`http://192.168.1.10:11434/v1`）。設定した接続先へ入力内容を送信するため、自分が利用するLLMサーバーを指定してください。別の接続先へのリダイレクトと環境プロキシは無効です。
 
 LLMは作業報告の構造化と相談への提案を生成し、Pythonが型・enum・質問件数を検査します。相談の原文・応答・固定コンテキストと、作業報告の抽出結果はDBに保存されます。ルール判定・履歴・承認・実行ゲートはLLMを使いません。オフラインでは `FakeExtractor(fixed_procedure, suggestions=fixed_suggestions)` を利用できます。実モデルによる出力品質は環境ごとの検証が必要です。

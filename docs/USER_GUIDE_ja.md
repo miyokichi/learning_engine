@@ -42,6 +42,14 @@ LE_LLM_API_KEY=local
 
 LM StudioのURL例は `http://localhost:1234/v1` です。別PCのサーバーなら、そのLAN内IPやホスト名を明示できます。`/chat/completions` はアプリが追加するので、URLには通常 `/v1` まで指定します。
 
+`response_format` の指定でエラーになる社内LLMでは、`.env` に次を追加してください。
+
+```dotenv
+LE_LLM_RESPONSE_FORMAT=none
+```
+
+`none` はリクエストから `response_format` 自体を省略します。対応サーバーでは `json_object`（既定）にするとJSON形式を指定して送信します。`chat --response-format none` のようにコマンド単位でも指定できます。テキスト・画像の両方と、作業報告・相談・疎通確認に共通で適用します。指定を省略しても、モデルにはJSON応答を求め、受信内容を検証します。JSON以外の返答や不正な型を知識として採用しません。
+
 設定の優先順位はCLI引数、環境変数、作業ディレクトリの `.env` の順です。別フォルダから起動するときは、`--env-file` をサブコマンドより前に指定します。
 
 ```powershell

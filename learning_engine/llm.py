@@ -165,7 +165,7 @@ unknown. An order in the report does not prove a required step order. Report any
 step order as unverified. Never interpret silence as expert approval."""
 
 class LocalChatExtractor:
-    def __init__(self, url, model, api_key="local", timeout=60):
+    def __init__(self, url, model, api_key="local", timeout=60, response_format="json_object"):
         if not isinstance(url, str) or not url.strip():
             raise ValueError("Set an explicit HTTP(S) OpenAI-compatible endpoint URL")
         url = url.strip()
@@ -184,6 +184,9 @@ class LocalChatExtractor:
             raise ValueError("Invalid endpoint port")
         if not model:
             raise ValueError("Model is required")
+        if response_format not in {"json_object", "none"}:
+            raise ValueError("LE_LLM_RESPONSE_FORMAT / --response-format must be json_object or none")
+        self.response_format = response_format
         self.url, self.model, self.api_key, self.timeout = url.rstrip('/'), model, api_key, timeout
 
     def extract(self, text):
@@ -221,13 +224,15 @@ Use original ids/actions only. Empty lists are fine. Explain in Japanese."""
         return validate_suggestion(self._complete(SUGGEST_SYSTEM, json.dumps({"task": task, "text": text, "context": context}, ensure_ascii=False)))
 
     def _complete(self, system, text):
+        body = {
+            "model": self.model,
+            "messages": [{"role": "system", "content": system}, {"role": "user", "content": text}],
+        }
+        if self.response_format == "json_object":
+            body["response_format"] = {"type": "json_object"}
         request = urllib.request.Request(
             self.url + "/chat/completions",
-            data=json.dumps({
-                "model": self.model,
-                "messages": [{"role": "system", "content": system}, {"role": "user", "content": text}],
-                "response_format": {"type": "json_object"},
-            }, ensure_ascii=False).encode("utf-8"),
+            data=json.dumps(body, ensure_ascii=False).encode("utf-8"),
             headers={"Content-Type": "application/json", "Authorization": f"Bearer {self.api_key}"},
         )
         class NoRedirect(urllib.request.HTTPRedirectHandler):

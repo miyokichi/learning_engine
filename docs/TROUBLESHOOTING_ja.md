@@ -6,7 +6,7 @@
 .\.venv\Scripts\learning-engine.exe --db my_learning.sqlite3 doctor
 ```
 
-`db_read_write: true`、`integrity: ok` がDBの確認結果です。`schema_migration: 3` がv0.3の追加テーブルです。`llm_configured` は設定の有無で、疎通成功を意味しません。APIキーは表示しません。
+`db_read_write: true`、`integrity: ok` がDBの確認結果です。`schema_migration: 4` が画像対応版の追加テーブルです。`llm_configured` は設定の有無で、疎通成功を意味しません。`llm_response_format` で `json_object` / `none` の設定を確認できます。APIキーは表示しません。
 
 ## コマンドが見つからない／venvを有効化できない
 
@@ -45,6 +45,8 @@ Remove-Item Env:LE_LLM_MODEL -ErrorAction SilentlyContinue
 ```
 
 `failed:HTTPError` はURL・認証・モデル指定等、`failed:URLError` や `TimeoutError` は接続先・サーバー・通信等の確認が必要です。APIはOpenAI互換のchat/completionsとJSON応答に対応している必要があります。接続先を設定しても、モデルの出力品質を保証するものではありません。
+
+`response_format` 非対応のサーバーでは、`.env` に `LE_LLM_RESPONSE_FORMAT=none` を追加してください。`response_format: null` ではなく、項目そのものを省略します。一時的には `doctor --check-llm --response-format none`、`chat --response-format none` でも指定できます。対応サーバーには `json_object`（既定）を使えます。指定を省略した場合も、モデルにはJSON応答を求め、返答の検証を続けます。
 
 以前の `Only explicit loopback ...` エラーはlocalhost限定検査によるもので、現在はLANの明示URLにも対応しています。依然表示されるならインストール先を確認し、上のvenvで再インストールしてください。別ホストへのリダイレクトは許可しません。
 
