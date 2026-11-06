@@ -22,3 +22,5 @@ examples/*
 !examples/replay_sequence.json
 !examples/tutorial_output_ja.txt
 !examples/chat_sample_output_ja.txt
+
+!examples/work_agent.py

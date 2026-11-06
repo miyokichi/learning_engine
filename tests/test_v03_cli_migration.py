@@ -56,7 +56,7 @@ class V03CLITests(unittest.TestCase):
 
     def test_installed_package_version_matches_source(self):
         from learning_engine import __version__
-        self.assertEqual(__version__, "0.3.0")
+        self.assertEqual(__version__, "0.4.0")
         self.assertEqual(importlib.metadata.version("learning-engine"), __version__)
 
     def test_tutorial_guided_commands_and_resume(self):
@@ -79,7 +79,7 @@ class V03CLITests(unittest.TestCase):
     def test_doctor_does_not_connect_and_empty_chat_explains_limit(self):
         output = json.loads(self.cli("doctor"))
         self.assertEqual(output["llm_connection"], "not_requested")
-        self.assertEqual(output["schema_migration"], 4)
+        self.assertEqual(output["schema_migration"], 5)
         chat = self.cli("chat", text="作業報告を残したい\n/exit\n")
         self.assertIn("自動解釈は無効", chat)
         with Engine(self.db) as e:
@@ -113,6 +113,6 @@ class V02MigrationTests(unittest.TestCase):
             conn.commit(); conn.close()
             for _ in range(2):
                 with Engine(path) as e:
-                    self.assertEqual(e.store.one("SELECT max(version) v FROM schema_migrations")["v"], 4)
+                    self.assertEqual(e.store.one("SELECT max(version) v FROM schema_migrations")["v"], 5)
                     after = {t: [tuple(row) for row in e.store.conn.execute("SELECT * FROM " + t).fetchall()] for t in tables}
                     self.assertEqual(before, after)

@@ -33,6 +33,7 @@ def main(argv=None):
     p.add_argument("--env-file", help="LLM設定ファイル（省略時は作業ディレクトリの.env）")
     sub = p.add_subparsers(dest="command", required=True)
     sub.add_parser("init")
+    x = sub.add_parser("work", help="WorkSessionで仕事・判断・振り返りを記録"); x.add_argument("--llm-url"); x.add_argument("--model")
     sub.add_parser("demo", help="架空の回答・承認を使ったオフラインE2Eデモ")
     x = sub.add_parser("tutorial", help="初めての方向けの日本語学習体験（架空教材）"); x.add_argument("--auto", action="store_true", help="架空の回答と承認を自動再生")
     x = sub.add_parser("chat", help="日本語で判断・質問・訂正・作業報告"); x.add_argument("--session"); x.add_argument("--sample", action="store_true", help="固定された架空会話サンプルを使用"); x.add_argument("--llm-url"); x.add_argument("--model")
@@ -67,7 +68,7 @@ def main(argv=None):
     x = sub.add_parser("confirm-debrief"); x.add_argument("--id", required=True); x.add_argument("--edited", help="edited JSON interpretation file")
     x = sub.add_parser("approve-procedure"); x.add_argument("--id", required=True); x.add_argument("--expert-approved", action="store_true")
     x = sub.add_parser("replay"); x.add_argument("--mode", choices=["current", "current_knowledge", "point_in_time"], default="current_knowledge")
-    for command in ("chat", "interact", "doctor", "consult", "compare-procedures", "debrief", "extend-debrief"):
+    for command in ("work", "chat", "interact", "doctor", "consult", "compare-procedures", "debrief", "extend-debrief"):
         sub.choices[command].add_argument("--response-format", choices=["json_object", "none"],
             help="LLMのJSON形式指定。noneはresponse_formatを送信しません（既定: none）")
     args = p.parse_args(argv)
@@ -89,6 +90,10 @@ def main(argv=None):
 
 
 def dispatch(args, e):
+    if args.command == "work":
+        from .work_coordinator import work_cli
+        work_cli(e, extractor(args))
+        return
     if args.command == "init":
         output = {"db": args.db, "status": "initialized"}
     elif args.command == "demo":

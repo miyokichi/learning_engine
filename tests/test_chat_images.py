@@ -161,7 +161,7 @@ class ImageTests(unittest.TestCase):
             with Engine(self.db) as engine:
                 self.assertEqual(engine.store.many("SELECT * FROM conversation_turns"), turns)
                 self.assertEqual(Conversation(engine, session_id=c.id).pending, pending)
-                self.assertEqual(engine.store.one("SELECT max(version) v FROM schema_migrations")["v"], 4)
+                self.assertEqual(engine.store.one("SELECT max(version) v FROM schema_migrations")["v"], 5)
                 self.assertEqual(engine.store.conn.execute("PRAGMA user_version").fetchone()[0], 2)
 
     def test_case_switch_and_goal_edit_retain_only_new_case_images(self):

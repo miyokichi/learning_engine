@@ -97,3 +97,7 @@ def migrate(conn):
     conn.executescript(V4_SQL)
     conn.execute("INSERT OR IGNORE INTO schema_migrations VALUES(4)")
     conn.commit()
+    from .work_session import SQL as WORK_SQL
+    conn.executescript(WORK_SQL)
+    conn.execute("INSERT OR IGNORE INTO schema_migrations VALUES(5)")
+    conn.commit()
