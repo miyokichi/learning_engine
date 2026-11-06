@@ -1,0 +1,476 @@
+[
+  {
+    "name": "le_start_work",
+    "description": "Start a work session.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "goal": {
+          "type": "string",
+          "minLength": 1
+        },
+        "context": {
+          "type": "object"
+        },
+        "idempotency_key": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "goal",
+        "context"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "le_get_work_status",
+    "description": "Get persisted work status.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "work_id": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "work_id"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "le_get_reusable_knowledge",
+    "description": "Related knowledge is not execution permission.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "context": {
+          "type": "object"
+        }
+      },
+      "required": [
+        "context"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "le_request_decision",
+    "description": "Evaluate; READY never authorizes external execution.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "work_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "target": {
+          "type": "string",
+          "minLength": 1
+        },
+        "known_facts": {
+          "type": "object",
+          "additionalProperties": {
+            "oneOf": [
+              {
+                "type": [
+                  "string",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "value": {
+                    "type": [
+                      "string",
+                      "number",
+                      "boolean",
+                      "null"
+                    ]
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "measured",
+                      "documented",
+                      "expert_confirmed",
+                      "derived_verified",
+                      "unknown",
+                      "assumed",
+                      "conflicting"
+                    ]
+                  },
+                  "source": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "unit": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "definition_version": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "value",
+                  "status"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          }
+        },
+        "decision_type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "checkpoint": {},
+        "case_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "proposed_questions": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          },
+          "maxItems": 2
+        },
+        "explore": {
+          "type": "boolean"
+        },
+        "idempotency_key": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "work_id",
+        "target",
+        "known_facts"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "le_record_step",
+    "description": "Record executed, planned or hypothetical work.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "work_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "action": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "result": {},
+        "evidence": {},
+        "state": {
+          "type": "string",
+          "enum": [
+            "executed",
+            "planned",
+            "hypothesis"
+          ]
+        },
+        "source": {
+          "type": "string",
+          "minLength": 1
+        },
+        "occurred_at": {
+          "type": "string",
+          "minLength": 1
+        },
+        "idempotency_key": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "work_id",
+        "action",
+        "reason",
+        "result",
+        "evidence"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "le_record_answer",
+    "description": "Store raw reported answer; does not confirm a human approval.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "work_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "question_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "answer": {
+          "type": "string",
+          "minLength": 1
+        },
+        "idempotency_key": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "work_id",
+        "question_id",
+        "answer"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "le_confirm_answer",
+    "description": "TRUSTED HUMAN UI ONLY. Confirm this exact interpretation.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "work_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "question_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "interpretation": {
+          "type": "object",
+          "properties": {
+            "value": {
+              "type": [
+                "string",
+                "number",
+                "boolean",
+                "null"
+              ]
+            },
+            "rule_candidate": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "value"
+          ],
+          "additionalProperties": false
+        },
+        "approval_token": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "work_id",
+        "question_id",
+        "interpretation",
+        "approval_token"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "le_get_resume_context",
+    "description": "Return explicit checkpoint and learning context.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "work_id": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "work_id"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "le_pause_work",
+    "description": "Pause learning-side state.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "work_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "checkpoint": {}
+      },
+      "required": [
+        "work_id"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "le_resume_work",
+    "description": "Resume state only, never execute external actions.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "work_id": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "work_id"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "le_complete_work",
+    "description": "Complete work and produce unapproved reflection.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "work_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "result": {}
+      },
+      "required": [
+        "work_id",
+        "result"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "le_generate_reflection",
+    "description": "Generate draft learning candidates.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "work_id": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "work_id"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "le_list_learning_candidates",
+    "description": "List drafts and review status.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "work_id": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "work_id"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "le_review_learning_candidate",
+    "description": "TRUSTED HUMAN UI ONLY. Separate learning publication approval.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "candidate_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "action": {
+          "type": "string",
+          "enum": [
+            "approve",
+            "reject",
+            "defer"
+          ]
+        },
+        "correction": {
+          "type": "object"
+        },
+        "approval_token": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "candidate_id",
+        "action",
+        "approval_token"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "le_record_expert_judgment",
+    "description": "TRUSTED HUMAN UI ONLY. Apply a judgment to this work, not a general rule.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "work_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "case_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "conclusion": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "idempotency_key": {
+          "type": "string",
+          "minLength": 1
+        },
+        "approval_token": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "work_id",
+        "case_id",
+        "conclusion",
+        "reason",
+        "approval_token"
+      ],
+      "additionalProperties": false
+    }
+  }
+]

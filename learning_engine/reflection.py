@@ -48,6 +48,9 @@ def generate_reflection(w, wid):
                 proposals.extend(validated)
             except Exception as exc:
                 unresolved.append({'extraction_error':type(exc).__name__})
+        for event in events:
+            if event['kind']=='EXPERT_JUDGMENT_RECORDED':
+                proposals.append(('observation', {'case_id':event['target_id'], 'text':event['body']['conclusion']+': '+event['body']['reason'], 'source':'work_event:'+event['id'], 'evidence_events':[event['id']], 'scope': {'work_id':wid}}))
         ids = []
         for kind, body in proposals:
             cid = new_id('LC')

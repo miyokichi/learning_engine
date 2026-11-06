@@ -101,3 +101,7 @@ def migrate(conn):
     conn.executescript(WORK_SQL)
     conn.execute("INSERT OR IGNORE INTO schema_migrations VALUES(5)")
     conn.commit()
+
+    conn.execute("CREATE TABLE IF NOT EXISTS mcp_used_approvals(nonce TEXT PRIMARY KEY,expires REAL NOT NULL)")
+    conn.execute("INSERT OR IGNORE INTO schema_migrations VALUES(6)")
+    conn.commit()
