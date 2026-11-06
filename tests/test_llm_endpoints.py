@@ -18,6 +18,9 @@ class EndpointTests(unittest.TestCase):
                 with patch("urllib.request.build_opener", return_value=opener):
                     self.assertEqual(client.extract("架空の作業報告")["goal"], PROCEDURE["goal"])
                 self.assertEqual(opener.open.call_args.args[0].full_url, url + "/chat/completions")
+                payload = json.loads(opener.open.call_args.args[0].data)
+                self.assertNotIn("temperature", payload)
+                self.assertIsInstance(payload["messages"][1]["content"], str)
 
     def test_invalid_urls_are_rejected(self):
         for url in ("", "file:///config", "ftp://server/v1", "http:///v1", "http://host:abc/v1",

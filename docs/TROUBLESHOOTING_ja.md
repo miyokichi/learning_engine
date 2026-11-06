@@ -87,4 +87,4 @@ $env:PYTHONIOENCODING = "utf-8"
 Copy-Item -LiteralPath my_learning.sqlite3 -Destination my_learning.backup.sqlite3
 ```
 
-この例はファイルが存在し、アプリ終了後であることが前提です。移行は追加型で、旧Case・Rule・Feedback・Auditを消しません。v0.3の台帳は `schema_migrations` の3、互換性のため `PRAGMA user_version` は2です。破損が疑われる場合は原本を保管し、コピーで診断してください。自動修復は実装していません。
+この例はファイルが存在し、アプリ終了後であることが前提です。移行は追加型で、旧Case・Rule・Feedback・Auditを消しません。画像対応版の台帳は `schema_migrations` の4、互換性のため `PRAGMA user_version` は2です。破損が疑われる場合は原本を保管し、コピーで診断してください。自動修復は実装していません。
