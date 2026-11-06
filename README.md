@@ -40,6 +40,8 @@ python -m venv .venv
 
 会話の `確認` は、画面に表示された一つの確認対象にだけ結び付きます。`OK` やLLM自身の「承認」は採用になりません。解釈確認とルール公開、手順候補の承認はそれぞれ別の確認です。原文・エラー・保留・候補を保存し、`/exit` で終了、`/status` で状態を確認できます。
 
+画像対応LLMを設定すると、chat内の `/image "C:\work\断面 画像.png"` で画像を添付できます。続けて説明・判断したいことを入力し、不明点への質問に答え、解釈を `確認` してナレッジを蓄積します。PNG・JPEG・WebP、1枚5 MiB以下に対応し、現在の案件に関連する直近4枚をLLMへ送信します。画像本体と出典はSQLiteに保持するため、再開時に元ファイルは不要です。詳しくは[画像の使い方](docs/USER_GUIDE_ja.md#画像を見ながら質問ナレッジを蓄積する)を参照してください。
+
 逐次リプレイは `case_revealed → system_decision → expert_answer_revealed / expert_review_revealed → correction_confirmed → rule_published` 等のイベントを `available_at` 順で適用します。`event_time` と利用可能時刻を分離し、未来の回答・正解を推論に渡しません。testの正解は採点だけに使い、学習DBに投入しません。`baseline_llm_plus_cases` は既定では固定の事例参照モデルで、実LLMの性能評価ではありません。fixtureは `examples/replay_sequence.json`、APIは `run_experiment` と `compare_experiment` です。
 
 ## 従来コマンドとAPI
@@ -185,6 +187,10 @@ learning-engine --env-file path/to/local.env --db demo.sqlite3 interact
 
 優先順位は **CLI引数 > 環境変数 > .env** です。`--llm-url` と `--model` でも指定できます。APIキーは任意の `LE_LLM_API_KEY`（未設定時は `local`）。`.env` はUTF-8で、空行・コメント・引用符・`export KEY=value`に対応します。変数展開やコード実行はしません。`.env` と `.env.*` はGit管理から除外し、`.env.example` だけを共有します。
 
+temperatureパラメータは送信しません。サーバー・モデルの既定値を使用します。画像を利用する場合は画像入力対応モデルとOpenAI互換の `image_url` 入力に対応したサーバーを指定してください。
+
+`response_format` は既定では送信しません（`LE_LLM_RESPONSE_FORMAT=none`）。対応サーバーへ明示的に送信したい場合は、`.env` に `LE_LLM_RESPONSE_FORMAT=json_object` を指定すると `response_format: {"type": "json_object"}` を送信します。`chat --response-format json_object` のようにCLIでも切り替えられ、優先順位はCLI > 環境変数 > .envです。どちらもプロンプトでJSON応答を依頼し、受信したJSONと型の検証を行います。
+
 接続先は明示指定したHTTP(S) URLで、localhostだけでなくLAN内のIPアドレス・ホスト名も利用できます（例：`http://192.168.1.10:11434/v1`）。設定した接続先へ入力内容を送信するため、自分が利用するLLMサーバーを指定してください。別の接続先へのリダイレクトと環境プロキシは無効です。
 
 LLMは作業報告の構造化と相談への提案を生成し、Pythonが型・enum・質問件数を検査します。相談の原文・応答・固定コンテキストと、作業報告の抽出結果はDBに保存されます。ルール判定・履歴・承認・実行ゲートはLLMを使いません。オフラインでは `FakeExtractor(fixed_procedure, suggestions=fixed_suggestions)` を利用できます。実モデルによる出力品質は環境ごとの検証が必要です。
@@ -204,7 +210,7 @@ LLMは作業報告の構造化と相談への提案を生成し、Pythonが型�
 
 初期Case属性と当時のDecisionスナップショットは保持し、属性更新・専門家レビュー・ルール公開/撤回を追記します。重要操作には監査イベント、ローカル操作主体、システム利用可能時刻が付きます。原文の追加回答・解釈確認・採用前後も保存します。
 
-`learning_engine/migrations.py` が起動時にv0.1/v0.2 DBへ追加テーブルを作ります。元テーブルの削除はありません。v0.3は会話・確認対象・質問候補・判断経路・証拠参照を追加します。既存監査からレビュー時刻を復元し、ルール公開イベントを取り込みます。監査がない古いレビューの利用可能時刻は推測せず、時点評価では未レビューにします。移行前にはアプリを終了しDBファイルをバックアップしてください。移行台帳 `schema_migrations` の最新は3です。既存ツールとの互換性のため `PRAGMA user_version` は2のまま維持しています。
+`learning_engine/migrations.py` が起動時に旧DBへ追加テーブルを作ります。元テーブルの削除はありません。v0.3は会話・確認対象・質問候補・判断経路・証拠参照を追加し、画像対応では画像本体・出典を保持する `conversation_attachments` を追加します。既存監査からレビュー時刻を復元し、ルール公開イベントを取り込みます。監査がない古いレビューの利用可能時刻は推測せず、時点評価では未レビューにします。移行前にはアプリを終了しDBファイルをバックアップしてください。移行台帳 `schema_migrations` の最新は4です。既存ツールとの互換性のため `PRAGMA user_version` は2のまま維持しています。
 
 `learning_engine.Engine` と既存サブコマンドを維持しています。DB接続は `with Engine(...)` または `close()` で閉じてください。
 

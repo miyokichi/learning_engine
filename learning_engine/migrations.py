@@ -65,6 +65,17 @@ CREATE TABLE IF NOT EXISTS tutorial_runs (
 """
 
 
+V4_SQL = """
+CREATE TABLE IF NOT EXISTS conversation_attachments (
+ id TEXT PRIMARY KEY, turn_id INTEGER NOT NULL REFERENCES conversation_turns(id),
+ case_id TEXT REFERENCES cases(id), filename TEXT NOT NULL, mime_type TEXT NOT NULL,
+ byte_size INTEGER NOT NULL, sha256 TEXT NOT NULL, data BLOB NOT NULL,
+ created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS attachments_by_turn ON conversation_attachments(turn_id);
+"""
+
+
 def migrate(conn):
     conn.executescript(SQL)
     if not conn.execute("SELECT 1 FROM schema_migrations WHERE version=2").fetchone():
@@ -83,3 +94,6 @@ def migrate(conn):
         conn.execute("INSERT INTO schema_migrations VALUES(3)")
         # Preserve the v0.2 user_version contract; the migration ledger is authoritative.
         conn.commit()
+    conn.executescript(V4_SQL)
+    conn.execute("INSERT OR IGNORE INTO schema_migrations VALUES(4)")
+    conn.commit()

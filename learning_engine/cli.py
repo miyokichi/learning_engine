@@ -23,7 +23,8 @@ def extractor(args):
     model = args.model or config.get("LE_LLM_MODEL")
     if bool(url) != bool(model):
         raise ValueError("Set both LE_LLM_URL and LE_LLM_MODEL")
-    return LocalChatExtractor(url, model, config.get("LE_LLM_API_KEY") or "local") if url else None
+    response_format = (getattr(args, "response_format", None) or config.get("LE_LLM_RESPONSE_FORMAT") or "none").strip().lower()
+    return LocalChatExtractor(url, model, config.get("LE_LLM_API_KEY") or "local", response_format=response_format) if url else None
 
 
 def main(argv=None):
@@ -66,6 +67,9 @@ def main(argv=None):
     x = sub.add_parser("confirm-debrief"); x.add_argument("--id", required=True); x.add_argument("--edited", help="edited JSON interpretation file")
     x = sub.add_parser("approve-procedure"); x.add_argument("--id", required=True); x.add_argument("--expert-approved", action="store_true")
     x = sub.add_parser("replay"); x.add_argument("--mode", choices=["current", "current_knowledge", "point_in_time"], default="current_knowledge")
+    for command in ("chat", "interact", "doctor", "consult", "compare-procedures", "debrief", "extend-debrief"):
+        sub.choices[command].add_argument("--response-format", choices=["json_object", "none"],
+            help="LLMのJSON形式指定。noneはresponse_formatを送信しません（既定: none）")
     args = p.parse_args(argv)
     if args.command == "replay-experiment":
         from .replay_experiment import run_experiment, compare_experiment
@@ -120,7 +124,8 @@ def dispatch(args, e):
         output = {"db": args.db, "db_read_write": True, "integrity": e.store.one("PRAGMA quick_check")["quick_check"],
                   "schema_migration": e.store.one("SELECT max(version) version FROM schema_migrations")["version"],
                   "env_file": args.env_file or str(Path.cwd() / ".env"), "llm_configured": model is not None,
-                  "llm_connection": "not_requested", "api_key": "not_displayed"}
+                  "llm_connection": "not_requested", "api_key": "not_displayed",
+                  "llm_response_format": model.response_format if model else None}
         if args.check_llm:
             if not model:
                 raise ValueError("LLM設定がありません。.envのURLとモデル名を確認してください")
