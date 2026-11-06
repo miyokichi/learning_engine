@@ -24,3 +24,5 @@ examples/*
 !examples/chat_sample_output_ja.txt
 
 !examples/work_agent.py
+
+!examples/mcp_client.py

@@ -76,19 +76,22 @@ class WorkSession:
             raise ValueError('Invalid step')
         body = dict(action=action, reason=reason, result=result, evidence=evidence, state=state)
         with self.e.store.transaction():
-            self._work(work_id, True)
+            self._work(work_id)
             old = self._retry(work_id, idempotency_key, 'STEP_RECORDED', body)
-            return old['id'] if old else self._event(work_id, 'STEP_RECORDED', body, source=source, occurred_at=occurred_at, key=idempotency_key)
+            if old:return old['id']
+            self._work(work_id,True)
+            return self._event(work_id, 'STEP_RECORDED', body, source=source, occurred_at=occurred_at, key=idempotency_key)
 
     def request_decision(self, work_id, target, known_facts, *, decision_type='model_reuse', checkpoint=None, case_id=None, proposed_questions=(), explore=False, idempotency_key=None):
         if not isinstance(target,str) or not target.strip() or not isinstance(known_facts,dict):
             raise ValueError('Decision needs a target and facts object')
         body = dict(target=target, known_facts=known_facts, decision_type=decision_type, checkpoint=checkpoint, case_id=case_id, proposed_questions=list(proposed_questions), explore=explore)
         with self.e.store.transaction():
-            self._work(work_id, True)
+            self._work(work_id)
             old = self._retry(work_id, idempotency_key, 'DECISION_REQUESTED', body)
             if old:
                 return decode(self.e.store.one('SELECT body FROM work_operation_results WHERE event_id=?',(old['id'],))['body'])
+            self._work(work_id,True)
             if case_id:
                 if not self.e.store.one('SELECT 1 FROM work_cases WHERE work_id=? AND case_id=?', (work_id, case_id)):
                     raise ValueError('Case belongs to another work')
@@ -138,17 +141,18 @@ class WorkSession:
             raise ValueError('Question does not belong to this work')
         return q
 
-    def record_answer(self, work_id, question_id, answer, *, idempotency_key=None):
+    def record_answer(self, work_id, question_id, answer, *, idempotency_key=None, source='human'):
         body = dict(question_id=question_id, answer=answer)
         with self.e.store.transaction():
-            self._work(work_id, True)
+            self._work(work_id)
             self._question(work_id, question_id)
             old = self._retry(work_id, idempotency_key, 'ANSWER_RECORDED', body)
             if old:
                 return self.e.store.one('SELECT * FROM work_answers WHERE question_id=?', (question_id,))
+            self._work(work_id,True)
             self.e.answer_question(question_id, answer)
             self.e.store.conn.execute('INSERT INTO work_answers VALUES(?,?,?,?) ON CONFLICT(question_id) DO UPDATE SET body=excluded.body,status=excluded.status', (question_id, work_id, encode({'raw': answer}), 'unconfirmed'))
-            self._event(work_id, 'ANSWER_RECORDED', body, question_id, source='human', key=idempotency_key)
+            self._event(work_id, 'ANSWER_RECORDED', body, question_id, source=source, key=idempotency_key)
         if self.llm:
             try:
                 proposal = self.llm.interpret(answer, {'questions': [self._question(work_id, question_id)], 'work': self.get_work_status(work_id)})
@@ -247,3 +251,27 @@ class WorkSession:
             if scope is not None and all(facts.get(k, {}).get('value') == v and facts.get(k, {}).get('status') in {'expert_confirmed','documented','measured','derived_verified'} for k,v in scope.items()):
                 concepts.append({**r, 'body': body, 'applicability': 'scope_matched'})
         return {'rules': rules, 'knowledge': concepts, 'approved_cases_related_only': [self.e.case(r['id']) for r in self.e.store.many("SELECT id FROM cases WHERE review_status='expert_approved'") if self.e.case(r['id'])['metadata'].get('decision_type','model_reuse')==context.get('decision_type','model_reuse')], 'procedures_related_only': self.e.store.many("SELECT * FROM procedure_candidates WHERE status IN ('approved_candidate','validated_for_scope')"), 'external_execution_authorized': False}
+
+    def record_expert_judgment(self, work_id, case_id, conclusion, reason, *, expert_confirmed=False, idempotency_key=None):
+        """An authenticated host UI may supply a case-local decision, not a rule."""
+        if not expert_confirmed:
+            raise PermissionError('Explicit human judgment required')
+        if not isinstance(conclusion,str) or not conclusion.strip() or not isinstance(reason,str) or not reason.strip():
+            raise ValueError('Judgment needs conclusion and reason')
+        body={'case_id':case_id,'conclusion':conclusion,'reason':reason}
+        with self.e.store.transaction():
+            self._work(work_id,True)
+            if not self.e.store.one('SELECT 1 FROM work_cases WHERE work_id=? AND case_id=?',(work_id,case_id)):
+                raise ValueError('Case belongs to another work')
+            old=self._retry(work_id,idempotency_key,'EXPERT_JUDGMENT_RECORDED',body)
+            if not old:
+                q=self.e.store.one("SELECT id,status FROM questions WHERE case_id=? AND field_id='judgment_basis' AND status IN ('open','answered_unverified')",(case_id,))
+                if q:
+                    if q['status']=='open':self.record_answer(work_id,q['id'],reason)
+                    self.confirm_answer(work_id,q['id'],{'value':reason},expert_confirmed=True)
+                self._event(work_id,'EXPERT_JUDGMENT_RECORDED',body,case_id,source='human',key=idempotency_key)
+            evaluation=self.e.evaluate(case_id,self.e.case(case_id)['metadata'].get('decision_type','model_reuse'),persist=False)
+            pending=self.e.store.one("SELECT 1 FROM questions q JOIN work_cases c ON c.case_id=q.case_id WHERE c.work_id=? AND q.status IN ('open','answered_unverified')",(work_id,))
+            status='BLOCK' if evaluation['gate']=='BLOCK' else ('NEED_INPUT' if pending else 'READY_TO_RESUME')
+            self.e.store.conn.execute('UPDATE work_sessions SET status=? WHERE id=?',(status,work_id))
+            return {'work_id':work_id,'case_id':case_id,'status':status,'individual_judgment':body,'external_execution_authorized':False}

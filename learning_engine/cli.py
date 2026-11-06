@@ -33,6 +33,8 @@ def main(argv=None):
     p.add_argument("--env-file", help="LLM設定ファイル（省略時は作業ディレクトリの.env）")
     sub = p.add_subparsers(dest="command", required=True)
     sub.add_parser("init")
+    x = sub.add_parser("serve-mcp", help="stdio MCPサーバ（stdoutはプロトコル専用）")
+    x.add_argument("--human-ui-key-file", help="信頼されたUI専用接続の承認鍵。通常のエージェントには指定しない")
     x = sub.add_parser("work", help="WorkSessionで仕事・判断・振り返りを記録"); x.add_argument("--llm-url"); x.add_argument("--model")
     sub.add_parser("demo", help="架空の回答・承認を使ったオフラインE2Eデモ")
     x = sub.add_parser("tutorial", help="初めての方向けの日本語学習体験（架空教材）"); x.add_argument("--auto", action="store_true", help="架空の回答と承認を自動再生")
@@ -72,6 +74,13 @@ def main(argv=None):
         sub.choices[command].add_argument("--response-format", choices=["json_object", "none"],
             help="LLMのJSON形式指定。noneはresponse_formatを送信しません（既定: none）")
     args = p.parse_args(argv)
+    if args.command == "serve-mcp":
+        from .mcp_server import serve
+        try:
+            serve(args.db, human_key_file=args.human_ui_key_file)
+        except (OSError, ValueError, sqlite3.Error) as exc:
+            p.error(str(exc))
+        return
     if args.command == "replay-experiment":
         from .replay_experiment import run_experiment, compare_experiment
         from .demo_experiment import sample_scenario
